@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
-<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#000000">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIA Pasting Schedule</title>
@@ -353,37 +348,37 @@ function handleTrackFile(f){
 function onPunchFile(inp){if(inp.files[0])handlePunchFile(inp.files[0]);}
 function handlePunchFile(f){
   document.getElementById('punchFname').textContent='📄 '+f.name;
+  toast('⏳ Punch file load hoat aahe...');
   const reader=new FileReader();
   reader.onload=e=>{
+    setTimeout(()=>{
     try{
-      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false});
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false,bookVBA:false,bookFiles:false,bookProps:false});
       punchJobs=[];
       wb.SheetNames.forEach(sn=>{
-        const ws=wb.Sheets[sn];if(!ws['!ref'])return;
-        // Read as array to find header row dynamically
-        const allRows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false,header:1});
-        // Find header row — row with 'JCNO'
+        const ws=wb.Sheets[sn];if(!ws||!ws['!ref'])return;
+        const range=XLSX.utils.decode_range(ws['!ref']);
+        if(range.e.c>120) range.e.c=120;
+        const limitedRef=XLSX.utils.encode_range(range);
+        const allRows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false,header:1,range:limitedRef});
         let hdrIdx=-1;
         for(let i=0;i<Math.min(allRows.length,20);i++){
           if(allRows[i].some(c=>String(c||'').replace(/[\s\r\n]+/g,'').toUpperCase()==='JCNO')){hdrIdx=i;break;}
         }
         if(hdrIdx<0){console.log('No JCNO header in sheet:',sn);return;}
         const hdr=allRows[hdrIdx].map(h=>String(h||'').replace(/[\r\n\t]+/g,' ').replace(/\s{2,}/g,' ').trim());
-        console.log('Sheet:',sn,'hdrIdx:',hdrIdx,'ALL cols:',hdr.join(' | '));
         const dataRows=allRows.slice(hdrIdx+1);
         dataRows.forEach(row=>{
           const r={};hdr.forEach((h,i)=>{if(h)r[h]=String(row[i]===null||row[i]===undefined?'':row[i]).trim();});
           const jcno=(r['JCNO']||r['Jcno']||r['JC NO']||'').trim();
           if(!jcno||jcno.length<4)return;
-          // Skip total/header rows
           if(/total|machine|grand|punching total|b1|b2/i.test(jcno))return;
           const qty=parseFloat(r['Qty']||r['Job Qty']||0)||0;
           const cut=parseFloat(r['Cut Sh']||r['Cut Sheet']||r['Tot. Cut SH']||0)||0;
           if(!qty&&!cut)return;
           const planType=(r['Plan Type']||r['PlanType']||'Scheduled').trim();
-          const endDate =(r['End Date']||r['EndDate']||r['Complete']||'').trim();
+          const endDate=(r['End Date']||r['EndDate']||r['Complete']||'').trim();
           const punchDateVal=(r['Punch Date']||r['PunchDate']||'').trim();
-          // readyKey = punch END date only (MR Date नाही — ती punch start आहे)
           const readyKey=parseDate(endDate)||parseDate(punchDateVal)||'';
           const isComingSoon=planType==='7-Day Plan';
           const isPH=planType==='PH';
@@ -408,12 +403,10 @@ function handlePunchFile(f){
       const cs=punchJobs.filter(j=>j.isComingSoon).length;
       const ph=punchJobs.filter(j=>j.isPH).length;
       const done=punchJobs.filter(j=>!j.isComingSoon&&!j.isPH).length;
-      // Debug — show first 3 readyKeys
-      const sample=punchJobs.slice(0,3).map(j=>j.jcno+':'+j.readyKey+'('+j.planType+')').join(' | ');
-      console.log('Sample punchJobs:', sample);
-      toast(`✅ Punch: ${done} scheduled + ${ph} PH + ${cs} CS | Sample: ${sample.slice(0,80)}`);
+      toast(`✅ Punch: ${done} scheduled + ${ph} PH + ${cs} coming soon`);
       checkReady();
     }catch(err){toast('❌ Punch file error: '+err.message);}
+    },100);
   };
   reader.readAsArrayBuffer(f);
 }
@@ -439,13 +432,25 @@ function handleBreilFile(f){
 function readFile(f,cb){
   const isCSV=/\.csv$/i.test(f.name);
   if(isCSV){Papa.parse(f,{header:true,skipEmptyLines:true,complete:r=>cb(normalizeKeys(r.data)),error:e=>toast('❌ '+e.message)});return;}
+  toast('⏳ File load hoat aahe...');
   const reader=new FileReader();
   reader.onload=e=>{
-    try{
-      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false});
-      const best=wb.SheetNames.reduce((a,n)=>{const s=wb.Sheets[n];if(!s['!ref'])return a;return XLSX.utils.decode_range(s['!ref']).e.r>XLSX.utils.decode_range(wb.Sheets[a]?.['!ref']||'A1:A1').e.r?n:a;},wb.SheetNames[0]);
-      cb(normalizeKeys(XLSX.utils.sheet_to_json(wb.Sheets[best],{defval:'',raw:false})));
-    }catch(err){toast('❌ '+err.message);}
+    setTimeout(()=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false,bookVBA:false,bookFiles:false,bookProps:false});
+        const trackSheet=wb.SheetNames.find(n=>n.toLowerCase().includes('track')||n.toLowerCase().includes('record'));
+        const best=trackSheet||wb.SheetNames.reduce((a,n)=>{const s=wb.Sheets[n];if(!s||!s['!ref'])return a;return XLSX.utils.decode_range(s['!ref']).e.r>XLSX.utils.decode_range(wb.Sheets[a]?.['!ref']||'A1:A1').e.r?n:a;},wb.SheetNames[0]);
+        setTimeout(()=>{
+          try{
+            const ws=wb.Sheets[best];
+            const range=XLSX.utils.decode_range(ws['!ref']);
+            if(range.e.c>120) range.e.c=120;
+            const limitedRef=XLSX.utils.encode_range(range);
+            cb(normalizeKeys(XLSX.utils.sheet_to_json(ws,{defval:'',raw:false,range:limitedRef})));
+          }catch(err2){toast('❌ '+err2.message);}
+        },100);
+      }catch(err){toast('❌ '+err.message);}
+    },100);
   };
   reader.readAsArrayBuffer(f);
 }
@@ -567,22 +572,30 @@ function buildSchedule(){
 
   const bk=toLocalKey(BASE);
 
-  // STEP 1 — Track Record PASTING jobs आधी (minWM=0)
-  [...trackJobs].sort((a,b)=>(a.itemType||'').localeCompare(b.itemType||'')||(a.jcno||'').localeCompare(b.jcno||'')).forEach(j=>place(j,0));
+  // STEP 1 — Track Record PASTING jobs PAHILE — dim ne sort
+  [...trackJobs].sort((a,b)=>(a.dim||'').localeCompare(b.dim||'')||(a.jcno||'').localeCompare(b.jcno||'')).forEach(j=>place(j,0));
 
   // Manual jobs
   manualJobs.forEach(j=>place(j,dayKeyToWM(j.readyKey||bk)));
 
-  // STEP 2 — Punching DONE + PH + Scheduled jobs → punch end date + 1 working day
-  [...punchJobs].filter(j=>!j.isComingSoon).sort((a,b)=>(a.readyKey||'').localeCompare(b.readyKey||'')).forEach(j=>{
+  // STEP 2 — Punch file jobs: PH → Scheduled → Coming Soon
+  const PLAN_PRIORITY = {'PH':1,'Scheduled':2,'Coming Soon':3};
+
+  const allPunchSorted = [...punchJobs].sort((a,b)=>{
+    const pa = PLAN_PRIORITY[a.planType]||9;
+    const pb = PLAN_PRIORITY[b.planType]||9;
+    if(pa!==pb) return pa-pb;
+    return (a.readyKey||'').localeCompare(b.readyKey||'');
+  });
+
+  allPunchSorted.filter(j=>!j.isComingSoon).forEach(j=>{
     if(trackJobs.find(t=>t.jcno===j.jcno))return;
-    // readyKey असेल तर +1 day, नसेल तर BASE पासून
     const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : bk;
     place(j, dayKeyToWM(pasteStart));
   });
 
-  // STEP 3 — Coming Soon jobs → punch date + 1 day = pasting start
-  [...punchJobs].filter(j=>j.isComingSoon).sort((a,b)=>(a.readyKey||'').localeCompare(b.readyKey||'')).forEach(j=>{
+  // STEP 3 — Coming Soon
+  allPunchSorted.filter(j=>j.isComingSoon).forEach(j=>{
     if(trackJobs.find(t=>t.jcno===j.jcno))return;
     const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : bk;
     place({...j, planType:'Coming Soon'}, dayKeyToWM(pasteStart));
