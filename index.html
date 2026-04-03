@@ -228,7 +228,8 @@ tr.breil-row{background:#F3E8FF;border-left:4px solid #7C3AED;}
       <b style="color:var(--navy);">Machine Logic:</b> &nbsp;
       Braille jobs (Embossing Details असलेले) → फक्त <b style="color:#5B21B6;">Expert</b> &nbsp;|&nbsp;
       बाकी → Auto (earliest available) &nbsp;|&nbsp;
-      <b style="color:var(--navy);">Speed:</b> Reverse Tuck / Temper Off 50K/hr · Catch Cover / Sleeves 25K/hr · Lock Bottom 25K/hr · Partition 30K/hr · <b>Reverse Tuck with Partition 20K/hr (MR 30 min)</b> &nbsp;|&nbsp; <b>Excluded:</b> Calender, Tray, Tag, Flyer, Label, Rigid Box, Wallet, Holder, Leaflet, Magnet, Outer
+      <b style="color:var(--navy);">Speed:</b> Reverse Tuck / Temper Off 50K/hr · Catch Cover / Sleeves 25K/hr · Lock Bottom 25K/hr · Partition 30K/hr &nbsp;|&nbsp;
+      <b style="color:#DC2626;">Excluded:</b> <span style="color:#DC2626;">Flyer · Label · Tray · Other</span> — या item types चे jobs schedule मध्ये येणार नाहीत
     </div>
   </div>
 </div>
@@ -388,10 +389,16 @@ let BASE=new Date();BASE.setHours(0,0,0,0);
 let pasteSched=[],breilMap={},trackJobs=[],punchJobs=[],manualJobs=[];
 
 // Item types जे Pasting ला जात नाहीत
-const EXCLUDED_PASTE = ['LABEL','KAPPA BOARD TRAY','KAPPA BOARD','HOLDER','LEAFLET','MAGNET','OUTER','RIGID WALLET PACK','RIGID WALLET','WALLET PACK','WALLET','RIGID BOX','CALENDER','TRAY','TAG','FLYER'];
+const EXCLUDED_PASTE = ['LABEL','KAPPA BOARD TRAY','KAPPA BOARD','HOLDER','LEAFLET','MAGNET','OUTER','RIGID WALLET PACK','RIGID WALLET','WALLET PACK','WALLET','RIGID BOX'];
+
+// Exact match exclusions — या item types चे jobs पूर्णपणे skip होतील
+const EXCLUDED_EXACT = ['FLYER','TRAY','OTHER','OTHERS','LABEL','LABLE'];
 
 function isExcludedFromPaste(itemType){
   const it=(itemType||'').toUpperCase().trim();
+  // Exact match check (Flyer, Tray, Other)
+  if(EXCLUDED_EXACT.includes(it)) return true;
+  // Partial match check (Label, Kappa Board Tray, etc.)
   return EXCLUDED_PASTE.some(x=>it.includes(x));
 }
 
@@ -399,9 +406,8 @@ function getPasteParams(it){
   const s=(it||'').toUpperCase().replace(/\s+/g,'');
   if(s.includes('LOCK'))                    return{speed:25000/60,mr:90};
   if(s.includes('CATCH')||s.includes('SLEEVE')) return{speed:25000/60,mr:45};
-  if(s.includes('REVERSETUCK')&&s.includes('PARTITION')) return{speed:20000/60,mr:30};
   if(s.includes('PARTITION'))               return{speed:30000/60,mr:30};
-  return{speed:50000/60,mr:15}; // Reverse Stuck / Temper Off / default
+  return{speed:50000/60,mr:15}; // Reverse Stuck / default
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -691,14 +697,14 @@ function buildSchedule(){
 
   allPunchSorted.filter(j=>!j.isComingSoon).forEach(j=>{
     if(trackJobs.find(t=>t.jcno===j.jcno))return;
-    const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : addWorkDay(bk);
+    const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : bk;
     place(j, dayKeyToWM(pasteStart));
   });
 
   // STEP 3 — Coming Soon
   allPunchSorted.filter(j=>j.isComingSoon).forEach(j=>{
     if(trackJobs.find(t=>t.jcno===j.jcno))return;
-    const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : addWorkDay(bk);
+    const pasteStart = j.readyKey ? addWorkDay(j.readyKey) : bk;
     place({...j, planType:'Coming Soon'}, dayKeyToWM(pasteStart));
   });
   renderSchedule();goPg(2);
